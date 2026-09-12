@@ -13,9 +13,10 @@ function buildTwiml(request: NextRequest): string {
   const reason = request.nextUrl.searchParams.get("reason") ?? "do something";
 
   const safeReason = escapeXml(reason);
-  const baseUrl =
+  const baseUrl = (
     process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+  ).trim();
   const actionUrl = `${baseUrl}/api/twilio/gather?taskId=${encodeURIComponent(taskId)}`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>

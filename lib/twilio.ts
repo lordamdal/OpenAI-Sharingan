@@ -8,8 +8,9 @@ import Twilio from "twilio";
 export async function placeApprovalCall(taskId: string, phone: string, reason: string): Promise<void> {
   const client = Twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
-  const baseUrl =
-    process.env.NEXT_PUBLIC_APP_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+  const baseUrl = (
+    process.env.NEXT_PUBLIC_APP_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
+  ).trim();
 
   await client.calls.create({
     to: phone,
