@@ -1,0 +1,3 @@
+# OpenAI-Sharingan
+
+Hackathon project.
