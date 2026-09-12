@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "phone is required" }, { status: 400 });
   }
 
-  const task = createTask(prompt, phone);
+  const task = await createTask(prompt, phone);
 
   // Don't block the response on the whole agent run, but keep the function
   // alive until it's done — a bare unawaited call can get frozen the

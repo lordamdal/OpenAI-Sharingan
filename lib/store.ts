@@ -1,6 +1,16 @@
-// In-memory task store. Good enough for one live demo run on a single
-// warm Vercel Fluid Compute instance — NOT durable, NOT multi-instance safe.
-// If we get spare time, swap this for Vercel KV/Upstash without changing callers.
+// Postgres-backed task store (Neon serverless driver over HTTP — works from
+// any Vercel Function, no persistent connection needed). Each task is one
+// JSONB row, read-modified-written whole; fine at hackathon-demo volume.
+// Swapped in after the in-memory version proved to lose tasks across
+// serverless instance rotations mid-demo.
+
+import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+
+let sql: NeonQueryFunction<false, false> | undefined;
+function getSql(): NeonQueryFunction<false, false> {
+  if (!sql) sql = neon(process.env.DATABASE_URL!);
+  return sql;
+}
 
 export type TaskStatus =
   | "starting"
@@ -32,61 +42,80 @@ export interface Task {
   pendingToolCallId?: string;
 }
 
-const tasks = new Map<string, Task>();
+async function readTask(id: string): Promise<Task | undefined> {
+  const rows = await getSql()`SELECT data FROM tasks WHERE id = ${id}`;
+  if (rows.length === 0) return undefined;
+  return rows[0].data as Task;
+}
 
-export function createTask(prompt: string, phone: string): Task {
+async function writeTask(task: Task): Promise<void> {
+  await getSql()`
+    INSERT INTO tasks (id, data, updated_at)
+    VALUES (${task.id}, ${JSON.stringify(task)}::jsonb, now())
+    ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()
+  `;
+}
+
+async function mutate(id: string, fn: (task: Task) => void): Promise<void> {
+  const task = await readTask(id);
+  if (!task) return;
+  fn(task);
+  await writeTask(task);
+}
+
+export async function createTask(prompt: string, phone: string): Promise<Task> {
   const id = Math.random().toString(36).slice(2, 10);
   const task: Task = { id, prompt, phone, status: "starting", log: [] };
-  tasks.set(id, task);
-  appendLog(id, "Task received.");
+  await writeTask(task);
+  await appendLog(id, "Task received.");
   return task;
 }
 
-export function getTask(id: string): Task | undefined {
-  return tasks.get(id);
+export async function getTask(id: string): Promise<Task | undefined> {
+  return readTask(id);
 }
 
-export function appendLog(id: string, message: string): void {
-  const task = tasks.get(id);
-  if (!task) return;
-  task.log.push({ ts: Date.now(), message });
+export async function appendLog(id: string, message: string): Promise<void> {
+  await mutate(id, (task) => {
+    task.log.push({ ts: Date.now(), message });
+  });
 }
 
-export function setStatus(id: string, status: TaskStatus): void {
-  const task = tasks.get(id);
-  if (!task) return;
-  task.status = status;
+export async function setStatus(id: string, status: TaskStatus): Promise<void> {
+  await mutate(id, (task) => {
+    task.status = status;
+  });
 }
 
-export function setPendingReason(id: string, reason: string): void {
-  const task = tasks.get(id);
-  if (!task) return;
-  task.pendingReason = reason;
+export async function setPendingReason(id: string, reason: string): Promise<void> {
+  await mutate(id, (task) => {
+    task.pendingReason = reason;
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function setMessages(id: string, messages: any[]): void {
-  const task = tasks.get(id);
-  if (!task) return;
-  task.messages = messages;
+export async function setMessages(id: string, messages: any[]): Promise<void> {
+  await mutate(id, (task) => {
+    task.messages = messages;
+  });
 }
 
-export function setPendingToolCallId(id: string, toolCallId: string | undefined): void {
-  const task = tasks.get(id);
-  if (!task) return;
-  task.pendingToolCallId = toolCallId;
+export async function setPendingToolCallId(id: string, toolCallId: string | undefined): Promise<void> {
+  await mutate(id, (task) => {
+    task.pendingToolCallId = toolCallId;
+  });
 }
 
-export function setResult(id: string, result: string): void {
-  const task = tasks.get(id);
-  if (!task) return;
-  task.result = result;
-  task.status = "done";
+export async function setResult(id: string, result: string): Promise<void> {
+  await mutate(id, (task) => {
+    task.result = result;
+    task.status = "done";
+  });
 }
 
-export function setError(id: string, error: string): void {
-  const task = tasks.get(id);
-  if (!task) return;
-  task.error = error;
-  task.status = "error";
+export async function setError(id: string, error: string): Promise<void> {
+  await mutate(id, (task) => {
+    task.error = error;
+    task.status = "error";
+  });
 }

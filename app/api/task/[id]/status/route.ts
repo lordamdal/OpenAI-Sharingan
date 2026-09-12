@@ -2,7 +2,7 @@ import { getTask } from "@/lib/store";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const task = getTask(id);
+  const task = await getTask(id);
 
   if (!task) {
     return Response.json({ error: "not found" }, { status: 404 });

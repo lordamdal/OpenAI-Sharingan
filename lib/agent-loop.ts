@@ -71,7 +71,7 @@ const tools: ChatCompletionTool[] = [
 // place and persists it to the store whenever the loop has to pause.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function runLoop(taskId: string, messages: any[]): Promise<void> {
-  const task = getTask(taskId);
+  const task = await getTask(taskId);
   if (!task) return;
 
   for (;;) {
@@ -101,8 +101,8 @@ async function runLoop(taskId: string, messages: any[]): Promise<void> {
         } catch {
           query = call.function.arguments;
         }
-        setStatus(taskId, "researching");
-        appendLog(taskId, `Researching: ${query}`);
+        await setStatus(taskId, "researching");
+        await appendLog(taskId, `Researching: ${query}`);
         const result = await exaSearch(query);
         messages.push({
           role: "tool",
@@ -120,17 +120,17 @@ async function runLoop(taskId: string, messages: any[]): Promise<void> {
           reason = approvalCall.function.arguments;
         }
 
-        appendLog(taskId, `Needs your OK: ${reason}`);
-        setPendingReason(taskId, reason);
-        setStatus(taskId, "awaiting_approval");
-        setMessages(taskId, messages);
-        setPendingToolCallId(taskId, approvalCall.id);
+        await appendLog(taskId, `Needs your OK: ${reason}`);
+        await setPendingReason(taskId, reason);
+        await setStatus(taskId, "awaiting_approval");
+        await setMessages(taskId, messages);
+        await setPendingToolCallId(taskId, approvalCall.id);
 
         try {
           await placeApprovalCall(taskId, task.phone, reason);
         } catch (err) {
-          appendLog(taskId, `Error placing approval call: ${String(err)}`);
-          setError(taskId, String(err));
+          await appendLog(taskId, `Error placing approval call: ${String(err)}`);
+          await setError(taskId, String(err));
         }
 
         return; // Do not wait here — resumeTask() continues this later.
@@ -142,14 +142,14 @@ async function runLoop(taskId: string, messages: any[]): Promise<void> {
 
     // No tool calls: this is the final answer.
     const content = assistantMessage.content ?? "";
-    setResult(taskId, content);
-    appendLog(taskId, "Task complete.");
+    await setResult(taskId, content);
+    await appendLog(taskId, "Task complete.");
     return;
   }
 }
 
 export async function runTask(taskId: string): Promise<void> {
-  const task = getTask(taskId);
+  const task = await getTask(taskId);
   if (!task) return;
 
   try {
@@ -161,8 +161,8 @@ export async function runTask(taskId: string): Promise<void> {
 
     await runLoop(taskId, messages);
   } catch (err) {
-    setError(taskId, String(err));
-    appendLog(taskId, `Error: ${String(err)}`);
+    await setError(taskId, String(err));
+    await appendLog(taskId, `Error: ${String(err)}`);
   }
 }
 
@@ -171,11 +171,11 @@ export async function resumeTask(
   approved: boolean,
   timedOut: boolean
 ): Promise<void> {
-  const task = getTask(taskId);
+  const task = await getTask(taskId);
   if (!task) return;
 
   if (!task.messages || !task.pendingToolCallId) {
-    appendLog(taskId, "Error: nothing pending to resume for this task.");
+    await appendLog(taskId, "Error: nothing pending to resume for this task.");
     return;
   }
 
@@ -186,8 +186,8 @@ export async function resumeTask(
     // here since a rejection flow isn't part of this MVP.
     void approved;
 
-    setStatus(taskId, timedOut ? "timed_out" : "approved");
-    appendLog(taskId, timedOut ? "No response — proceeding anyway." : "Approved by phone.");
+    await setStatus(taskId, timedOut ? "timed_out" : "approved");
+    await appendLog(taskId, timedOut ? "No response — proceeding anyway." : "Approved by phone.");
 
     const messages = task.messages;
     messages.push({
@@ -195,11 +195,11 @@ export async function resumeTask(
       tool_call_id: task.pendingToolCallId,
       content: "Approved.",
     });
-    setPendingToolCallId(taskId, undefined);
+    await setPendingToolCallId(taskId, undefined);
 
     await runLoop(taskId, messages);
   } catch (err) {
-    setError(taskId, String(err));
-    appendLog(taskId, `Error: ${String(err)}`);
+    await setError(taskId, String(err));
+    await appendLog(taskId, `Error: ${String(err)}`);
   }
 }
