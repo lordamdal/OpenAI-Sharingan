@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { createTask } from "@/lib/store";
 import { runTask } from "@/lib/agent-loop";
 
@@ -20,8 +21,10 @@ export async function POST(request: Request) {
 
   const task = createTask(prompt, phone);
 
-  // Fire-and-forget: don't block the response on the whole agent run.
-  runTask(task.id).catch((err) => console.error(err));
+  // Don't block the response on the whole agent run, but keep the function
+  // alive until it's done — a bare unawaited call can get frozen the
+  // instant the response is sent on serverless.
+  after(() => runTask(task.id).catch((err) => console.error(err)));
 
   return Response.json({ id: task.id });
 }
